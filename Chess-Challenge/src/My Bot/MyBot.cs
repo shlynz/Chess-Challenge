@@ -7,6 +7,8 @@ using System.Linq;
 public class MyBot : IChessBot
 {
     Board board;
+    Move searchResult;
+    int searchDepth = 3;
     int nodesChecked;
 
     // https://www.chessprogramming.org/Transposition_Table
@@ -97,8 +99,13 @@ public class MyBot : IChessBot
     public Move Think(Board _board, Timer timer)
     {
       board = _board;
+      searchResult = Move.NullMove;
+      nodesChecked = 0;
       Console.WriteLine(eval(!board.IsWhiteToMove));
-      return search();
+      singleSearchFunction(searchDepth, -999999999, 999999999);
+      Console.WriteLine(searchResult);
+      return searchResult;
+      // return search();
     }
 
     private int eval(bool isWhite)
@@ -150,39 +157,17 @@ public class MyBot : IChessBot
       return isWhite ? total : -total;
     }
 
-    // Root of the Negamax-Search
-    private Move search()
-    {
-      nodesChecked = 0;
-      Move bestMove = Move.NullMove;
-      int bestEval = -999999999;
-
-      foreach (Move move in order(board.GetLegalMoves()))
-      {
-        board.MakeMove(move);
-        int result = -rsearch(3, -999999999, 999999999);
-        board.UndoMove(move);
-        if(result > bestEval)
-        {
-          bestEval = result;
-          bestMove = move;
-        }
-      }
-      Console.WriteLine($"Nodes: {nodesChecked}, Move: {bestMove}, Eval: {bestEval}");
-      return bestMove;
-    }
-
-    // Recursive part of the Negamax-Search
-    private int rsearch(int depth, int alpha, int beta)
+    // attempt to compact the search into a singel function
+    private int singleSearchFunction(int depth, int alpha, int beta)
     {
       if(depth == 0) return eval(board.IsWhiteToMove);
+      if(board.IsRepeatedPosition()) return 0;
 
-      ulong currKey = board.ZobristKey;
-      TranspositionTableEntry entry = transpositionTable[currKey % transpositionTableSize];
-
-      if(entry.key == currKey)
+      ulong currentKey = board.ZobristKey;
+      TranspositionTableEntry transpositionTableEntry = transpositionTable[currentKey % transpositionTableSize];
+      if(depth != searchDepth && transpositionTableEntry.key == currentKey)
       {
-        return entry.score;
+        return transpositionTableEntry.score;
       }
       nodesChecked++;
 
@@ -191,12 +176,17 @@ public class MyBot : IChessBot
       foreach (Move move in order(board.GetLegalMoves()))
       {
         board.MakeMove(move);
-        int result = -rsearch(depth-1, -beta, -alpha);
+        int result = -singleSearchFunction(depth-1, -beta, -alpha);
         board.UndoMove(move);
+
         if(result > bestEval)
         {
           bestEval = result;
           bestMove = move;
+          if(depth == searchDepth)
+          {
+            searchResult = bestMove;
+          }
           if(result >= beta)
           {
             return beta;
@@ -205,7 +195,8 @@ public class MyBot : IChessBot
         }
       }
 
-      transpositionTable[currKey % transpositionTableSize] = new TranspositionTableEntry(currKey, bestMove, depth, bestEval);
+      if(board.GetLegalMoves().Length == 0) return board.IsInCheck() ? -999999999 : 0;
+      transpositionTable[currentKey % transpositionTableSize] = new TranspositionTableEntry(currentKey, bestMove, depth, alpha);
       return alpha;
     }
 
