@@ -9,6 +9,23 @@ public class MyBot : IChessBot
     Board board;
     int nodesChecked;
 
+    // https://www.chessprogramming.org/Transposition_Table
+    static ulong transpositionTableSize = 999999;
+    struct TranspositionTableEntry
+    {
+      public ulong key;
+      public Move move;
+      public int depth, score;
+      public TranspositionTableEntry(ulong key, Move move, int depth, int score)
+      {
+        this.key = key;
+        this.move = move;
+        this.depth = depth;
+        this.score = score;
+      }
+    }
+    TranspositionTableEntry[] transpositionTable = new TranspositionTableEntry[transpositionTableSize];
+
     // Piece-Square Tables from https://www.chessprogramming.org/Piece-Square_Tables
     // Need to be compressed/encoded somehow
     int[] mg_pawn_table = {
@@ -158,19 +175,37 @@ public class MyBot : IChessBot
     // Recursive part of the Negamax-Search
     private int rsearch(int depth, int alpha, int beta)
     {
-      nodesChecked++;
       if(depth == 0) return eval(board.IsWhiteToMove);
+
+      ulong currKey = board.ZobristKey;
+      TranspositionTableEntry entry = transpositionTable[currKey % transpositionTableSize];
+
+      if(entry.key == currKey)
+      {
+        return entry.score;
+      }
+      nodesChecked++;
+
+      Move bestMove = Move.NullMove;
+      int bestEval = -999999999;
       foreach (Move move in order(board.GetLegalMoves()))
       {
         board.MakeMove(move);
         int result = -rsearch(depth-1, -beta, -alpha);
         board.UndoMove(move);
-        if(result >= beta)
+        if(result > bestEval)
         {
-          return beta;
+          bestEval = result;
+          bestMove = move;
+          if(result >= beta)
+          {
+            return beta;
+          }
+          alpha = Math.Max(alpha, result);
         }
-        alpha = Math.Max(alpha, result);
       }
+
+      transpositionTable[currKey % transpositionTableSize] = new TranspositionTableEntry(currKey, bestMove, depth, bestEval);
       return alpha;
     }
 
@@ -181,7 +216,7 @@ public class MyBot : IChessBot
       for (int index = 0; index < moves.Length; index++)
       {
         Move move = moves[index];
-        moveScores[index] = move.IsCapture ? (move.CapturePieceType - move.MovePieceType) * 999999 : 0;
+        moveScores[index] = move.IsCapture ? (move.CapturePieceType - move.MovePieceType) * 100 : 0;
       }
       Array.Sort(moveScores, moves);
       return moves;
