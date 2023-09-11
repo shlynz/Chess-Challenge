@@ -30,141 +30,186 @@ public class MyBot : IChessBot
 
     // Piece-Square Tables from https://www.chessprogramming.org/Piece-Square_Tables
     // Need to be compressed/encoded somehow
-    int[] mg_pawn_table = {
-        0,   0,   0,   0,   0,   0,  0,   0,
-      98, 134,  61,  95,  68, 126, 34, -11,
-      -6,   7,  26,  31,  65,  56, 25, -20,
-      -14,  13,   6,  21,  23,  12, 17, -23,
-      -27,  -2,  -5,  12,  17,   6, 10, -25,
-      -26,  -4,  -4, -10,   3,   3, 33, -12,
-      -35,  -1, -20, -23, -15,  24, 38, -22,
-        0,   0,   0,   0,   0,   0,  0,   0
+    sbyte[,,] decodedTables = new sbyte[2,6,64];
+    ulong[] encodedTableLines = {
+      0x0000000000000000,
+      0x435C2A412F5617F8,
+      0xFC0512152C2611F2,
+      0xF609040E10080CF0,
+      0xEEFFFD080C0407EF,
+      0xEEFDFDF9020217F8,
+      0xE8FFF2F0F6101AF1,
+      0x0000000000000000,
+      0x8EC3E9DE2ABEF6B7,
+      0xCEE43119102A05F4,
+      0xE029192C3958321E,
+      0xFA0C0D24192F0C0F,
+      0xF7030B09130D0EFB,
+      0xF0FA08070D0C11F5,
+      0xECDCF8FEFF0CF6F3,
+      0xB8F2D8E9F4EDF3F0,
+      0xEC03C8E7EFE305FB,
+      0xEE0BF4F715280CE0,
+      0xF5191D1B182219FF,
+      0xFD030D22191905FF,
+      0xFC09091217080703,
+      0x000A0A0A0A120C07,
+      0x030A0B00050E1701,
+      0xE9FEF6F2F7F8E5F2,
+      0x161D16232B06151D,
+      0x1216282A372E121E,
+      0xFD0D12190C1F2A0B,
+      0xF0F805121018FBF2,
+      0xE7EEF8FF06FB04F0,
+      0xE1EFF5F40200FDE9,
+      0xE2F5F2FAFF08FCCF,
+      0xF3F7010C0B05E7EE,
+      0xED001408281E1D1F,
+      0xF0E5FD01F5271325,
+      0xF7F4050514262027,
+      0xEEEEF5F5FF0CFF01,
+      0xFAEEFAF9FFFD02FE,
+      0xF601F8FFFD010A03,
+      0xE8FB0801050AFE01,
+      0xFFF4FA07F6EFEBDE,
+      0xD4100BF6DAE90109,
+      0x14FFF2FBFBFDE6EC,
+      0xFA1001F5F2040FF1,
+      0xF4F2F8EEEBEFF6E7,
+      0xDEFFEEE5E1E2E9DD,
+      0xF6F6F1E1E2EBF6EE,
+      0x0105FBD4E3F50605,
+      0xF61908DB05ED100A,
+      0x0000000000000000,
+      0x7A766C5C655A717F,
+      0x40443A2E26243839,
+      0x16100903FF030C0C,
+      0x0906FEFBFBFB02FF,
+      0x0305FC0100FDFFFB,
+      0x09050507090001FB,
+      0x0000000000000000,
+      0xD8E6F7EDEBEED5BC,
+      0xEFFBEFFFFAEFF0DC,
+      0xF0F20706FFFAF3E4,
+      0xF4020F0F0F0805F4,
+      0xF4FC0B110B0C03F4,
+      0xF0FEFF0A07FEF2F1,
+      0xE3F2F9FDFFF2F0E2,
+      0xECDDF0F6F1F4DED4,
+      0xF6F2F8FBFBFAF4F0,
+      0xFBFD05F8FEF7FDF6,
+      0x01FB00FFFF040003,
+      0xFE0608060A070201,
+      0xFC02090D0507FEFA,
+      0xF8FE05070902FBF6,
+      0xF6F4FBFF03FAF6EE,
+      0xF0FAF0FDFAF5FDF4,
+      0x09070C0A08080503,
+      0x08090908FE020502,
+      0x0505050303FEFDFE,
+      0x030209010101FF01,
+      0x02030503FDFCFBF8,
+      0xFD00FDFFFBF8FBF5,
+      0xFCFC0001FAFAF8FE,
+      0xFA0102FFFDF703F2,
+      0xFA0F0F12120D070E,
+      0xF40E161C28111500,
+      0xF204062220180D06,
+      0x020F101F271B2719,
+      0xF4130D2015171B10,
+      0xF5EE0A04060C0703,
+      0xF1F0EBF5F5F0E7EA,
+      0xE9EDF1E3FDEAF2E4,
+      0xCDE8F4F4F80A03F4,
+      0xF80C0A0C0C1A1008,
+      0x070C100A0E1F1E09,
+      0xFB0F101212171202,
+      0xF4FD0E10121006F8,
+      0xF3FE080E100B05FA,
+      0xEEF803090A03FDF4,
+      0xDCE9F2F8EDF6F0E3
     };
 
-    int[] mg_knight_table = {
-      -167, -89, -34, -49,  61, -97, -15, -107,
-      -73, -41,  72,  36,  23,  62,   7,  -17,
-      -47,  60,  37,  65,  84, 129,  73,   44,
-        -9,  17,  19,  53,  37,  69,  18,   22,
-      -13,   4,  16,  13,  28,  19,  21,   -8,
-      -23,  -9,  12,  10,  19,  17,  25,  -16,
-      -29, -53, -12,  -3,  -1,  18, -14,  -19,
-      -105, -21, -58, -33, -17, -28, -19,  -23,
-    };
-
-    int[] mg_bishop_table = {
-      -29,   4, -82, -37, -25, -42,   7,  -8,
-      -26,  16, -18, -13,  30,  59,  18, -47,
-      -16,  37,  43,  40,  35,  50,  37,  -2,
-      -4,   5,  19,  50,  37,  37,   7,  -2,
-      -6,  13,  13,  26,  34,  12,  10,   4,
-        0,  15,  15,  15,  14,  27,  18,  10,
-        4,  15,  16,   0,   7,  21,  33,   1,
-      -33,  -3, -14, -21, -13, -12, -39, -21,
-    };
-
-    int[] mg_rook_table = {
-        32,  42,  32,  51, 63,  9,  31,  43,
-        27,  32,  58,  62, 80, 67,  26,  44,
-        -5,  19,  26,  36, 17, 45,  61,  16,
-        -24, -11,   7,  26, 24, 35,  -8, -20,
-        -36, -26, -12,  -1,  9, -7,   6, -23,
-        -45, -25, -16, -17,  3,  0,  -5, -33,
-        -44, -16, -20,  -9, -1, 11,  -6, -71,
-        -19, -13,   1,  17, 16,  7, -37, -26,
-    };
-
-    int[] mg_queen_table = {
-        -28,   0,  29,  12,  59,  44,  43,  45,
-        -24, -39,  -5,   1, -16,  57,  28,  54,
-        -13, -17,   7,   8,  29,  56,  47,  57,
-        -27, -27, -16, -16,  -1,  17,  -2,   1,
-        -9, -26,  -9, -10,  -2,  -4,   3,  -3,
-        -14,   2, -11,  -2,  -5,   2,  14,   5,
-        -35,  -8,  11,   2,   8,  15,  -3,   1,
-        -1, -18,  -9,  10, -15, -25, -31, -50,
-    };
-
-    int[] mg_king_table = {
-        -65,  23,  16, -15, -56, -34,   2,  13,
-        29,  -1, -20,  -7,  -8,  -4, -38, -29,
-        -9,  24,   2, -16, -20,   6,  22, -22,
-        -17, -20, -12, -27, -30, -25, -14, -36,
-        -49,  -1, -27, -39, -46, -44, -33, -51,
-        -14, -14, -22, -46, -44, -30, -15, -27,
-          1,   7,  -8, -64, -43, -16,   9,   8,
-        -15,  36,  12, -54,   8, -28,  24,  14,
-    };
+    public MyBot(){
+      // initialize the PST from the compacted data
+      for (int index = 0;  index < encodedTableLines.Length;  index++)
+      {
+        byte[] bytes = BitConverter.GetBytes(encodedTableLines[index]);
+        for (int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
+        {
+          // Gamephase = index/48
+          // Piecenumber = (index%48)/8
+          // Linenumber = index%8
+          // Squarenumber = byteIndex
+          // Indexing: Gamephase 0..1, Piece 0..5, Square 0..63
+          decodedTables[index/48,(index%48)/8,byteIndex + 8 * (index%8)] = (sbyte)bytes[7-byteIndex];
+        }
+      }
+    }
 
     public Move Think(Board _board, Timer timer)
     {
       board = _board;
       searchResult = Move.NullMove;
       nodesChecked = 0;
-      Console.WriteLine(eval(!board.IsWhiteToMove));
-      singleSearchFunction(searchDepth, -999999999, 999999999);
-      Console.WriteLine(searchResult);
+      Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
+      Console.WriteLine($"Search eval:\t\t{singleSearchFunction(searchDepth, -999999999, 999999999)}");
+      Console.WriteLine($"Found move:\t\t{searchResult}");
+      Console.WriteLine($"Nodes searched:\t\t{nodesChecked}");
       return searchResult;
       // return search();
     }
 
     private int eval(bool isWhite)
     {
-      var vals = new Dictionary<char, int>()
+      int total = 0, square = 0;
+      (sbyte, int) val;
+      var vals = new Dictionary<char, (sbyte, int)>()
       {
-        {'P', 82},
-        {'B', 365},
-        {'N', 337},
-        {'R', 477},
-        {'Q', 1025},
-        {'K', 10000}
+        {'P', (0, 100)},
+        {'R', (3, 500)},
+        {'N', (1, 300)},
+        {'B', (2, 300)},
+        {'Q', (4, 900)},
+        {'K', (5, 1200)},
       };
-      int total = 0, val = 0, square = 0;
       // very crude evalutaion based on piece value and position according to Piece-Square Tables
       foreach (char fenChar in board.GetFenString().Split(' ')[0])
       {
-        bool isPiece = vals.TryGetValue(Char.ToUpper(fenChar), out val);
+        char upperFenChar = Char.ToUpper(fenChar);
+        bool isPiece = vals.TryGetValue(upperFenChar, out val);
         if(isPiece){
-          bool isWhitePiece = (int)fenChar < 97;
-          int adjSquare = !isWhitePiece ? square : square ^ 56;
-          if(Char.ToUpper(fenChar) == 'P')
-          {
-            val += mg_pawn_table[adjSquare];
-          }
-          if(Char.ToUpper(fenChar) == 'N')
-          {
-            val += mg_knight_table[adjSquare];
-          }
-          if(Char.ToUpper(fenChar) == 'B'){
-            val += mg_bishop_table[adjSquare];
-          }
-          if(Char.ToUpper(fenChar) == 'R'){
-            val += mg_rook_table[adjSquare];
-          }
-          if(Char.ToUpper(fenChar) == 'Q'){
-            val += mg_queen_table[adjSquare];
-          }
-          total += isWhitePiece ? val : -val;
+          bool isWhitePiece = fenChar < 97;
+          int adjSquare = isWhitePiece ? square ^ 56 : square;
+          // result = value of piece + value of the square for specific piece
+          int result = val.Item2 + decodedTables[0,val.Item1,adjSquare];
+          // if it's a black piece, negate the result
+          total += isWhitePiece ? result : -result;
         }
         else
         {
+          // increment square counter by one less than the digit, since it'll increment by one later
           if(Char.IsDigit(fenChar)) square += fenChar - '1';
         }
+        // if it's a '/', don't increment the square counter, otherwise do
         square += fenChar == 47 ? 0 : 1;
         // Original idea about evaluating from the FEN-String
         //total += vals.TryGetValue(Char.ToUpper(fenChar), out val) ? ((int)fenChar < 97 ? val : -val) : 0;
       }
+      // since the result favors white, negate it if evaluating for blacks position
       return isWhite ? total : -total;
     }
 
-    // attempt to compact the search into a singel function
+    // attempt to compact the search into a single function
     private int singleSearchFunction(int depth, int alpha, int beta)
     {
       if(depth == 0) return eval(board.IsWhiteToMove);
       if(board.IsRepeatedPosition()) return 0;
 
+      // check if the current position has been reached already
       ulong currentKey = board.ZobristKey;
       TranspositionTableEntry transpositionTableEntry = transpositionTable[currentKey % transpositionTableSize];
+      // if it wasn't on the first iteration, return that score instead of evaluating again
       if(depth != searchDepth && transpositionTableEntry.key == currentKey)
       {
         return transpositionTableEntry.score;
@@ -189,13 +234,14 @@ public class MyBot : IChessBot
           }
           if(result >= beta)
           {
-            return beta;
+            break;
           }
           alpha = Math.Max(alpha, result);
         }
       }
 
       if(board.GetLegalMoves().Length == 0) return board.IsInCheck() ? -999999999 : 0;
+      // add evaluated position to the transposition table
       transpositionTable[currentKey % transpositionTableSize] = new TranspositionTableEntry(currentKey, bestMove, depth, alpha);
       return alpha;
     }
