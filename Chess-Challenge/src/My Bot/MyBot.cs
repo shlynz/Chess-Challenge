@@ -224,7 +224,7 @@ public class MyBot : IChessBot
         int result = -singleSearchFunction(depth-1, -beta, -alpha);
         board.UndoMove(move);
 
-        if(result > bestEval)
+        if(result >= bestEval)
         {
           bestEval = result;
           bestMove = move;
@@ -243,7 +243,7 @@ public class MyBot : IChessBot
       if(board.GetLegalMoves().Length == 0) return board.IsInCheck() ? -999999999 : 0;
       // add evaluated position to the transposition table
       transpositionTable[currentKey % transpositionTableSize] = new TranspositionTableEntry(currentKey, bestMove, depth, alpha);
-      return alpha;
+      return bestEval;
     }
 
     // Crude attempt to order moves, basically just puts captures infront, ordered by MVV/LVA idea
