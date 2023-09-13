@@ -7,7 +7,9 @@ using System.Linq;
 public class MyBot : IChessBot
 {
     Board board;
+    Timer timer;
     Move searchResult;
+    int searchResultEval;
     int searchDepth = 3;
     int nodesChecked;
 
@@ -147,13 +149,24 @@ public class MyBot : IChessBot
       }
     }
 
-    public Move Think(Board _board, Timer timer)
+    public Move Think(Board _board, Timer _timer)
     {
       board = _board;
+      timer = _timer;
       searchResult = Move.NullMove;
+      searchResultEval = -999999999;
       nodesChecked = 0;
       Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
-      Console.WriteLine($"Search eval:\t\t{singleSearchFunction(searchDepth, -999999999, 999999999)}");
+      for(searchDepth = 2; searchDepth <= 3; searchDepth++)
+      {
+        Console.WriteLine(singleSearchFunction(searchDepth, searchResultEval, 999999999));
+        Console.WriteLine(searchResult);
+        if(turnTimeElapsed())
+        {
+          break;
+        }
+      }
+      Console.WriteLine($"Searched Depth: {searchDepth}");
       Console.WriteLine($"Found move:\t\t{searchResult}");
       Console.WriteLine($"Nodes searched:\t\t{nodesChecked}");
       return searchResult;
@@ -203,7 +216,6 @@ public class MyBot : IChessBot
     // attempt to compact the search into a single function
     private int singleSearchFunction(int depth, int alpha, int beta)
     {
-      if(depth == 0) return eval(board.IsWhiteToMove);
       if(board.IsRepeatedPosition()) return 0;
 
       // check if the current position has been reached already
@@ -212,25 +224,36 @@ public class MyBot : IChessBot
       // if it wasn't on the first iteration, return that score instead of evaluating again
       if(depth != searchDepth && transpositionTableEntry.key == currentKey)
       {
-        return transpositionTableEntry.score;
+        // this breaks the search at the moment...
+        // return transpositionTableEntry.score;
       }
       nodesChecked++;
 
       Move bestMove = Move.NullMove;
       int bestEval = -999999999;
-      foreach (Move move in order(board.GetLegalMoves()))
+
+      Move[] moves = board.GetLegalMoves(depth <= 0);
+
+      if(depth <= 0 && moves.Length == 0)
+      {
+        return eval(board.IsWhiteToMove);
+      }
+
+      foreach (Move move in order(moves))
       {
         board.MakeMove(move);
         int result = -singleSearchFunction(depth-1, -beta, -alpha);
         board.UndoMove(move);
 
-        if(result >= bestEval)
+        if(result >= searchResultEval)
         {
           bestEval = result;
           bestMove = move;
           if(depth == searchDepth)
           {
+          //Console.WriteLine($"Result: {result}, Best Eval: {bestEval}, {move}, Best {bestMove}");
             searchResult = bestMove;
+            searchResultEval = bestEval;
           }
           if(result >= beta)
           {
@@ -257,5 +280,10 @@ public class MyBot : IChessBot
       }
       Array.Sort(moveScores, moves);
       return moves;
+    }
+
+    private bool turnTimeElapsed()
+    {
+      return timer.MillisecondsElapsedThisTurn >= 1000;
     }
 }
