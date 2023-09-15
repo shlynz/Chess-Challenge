@@ -12,6 +12,7 @@ public class MyBot : IChessBot
     int searchResultEval;
     int searchDepth = 3;
     int nodesChecked;
+    double averageTime = 0;
 
     // https://www.chessprogramming.org/Transposition_Table
     static ulong transpositionTableSize = 999999;
@@ -31,8 +32,9 @@ public class MyBot : IChessBot
     TranspositionTableEntry[] transpositionTable = new TranspositionTableEntry[transpositionTableSize];
 
     // Piece-Square Tables from https://www.chessprogramming.org/Piece-Square_Tables
-    // Need to be compressed/encoded somehow
-    sbyte[,,] decodedTables = new sbyte[2,6,64];
+    sbyte[,,] decodedTables = new sbyte[2,7,64];
+    // Pawn, Queen, Rook, King, Bishop, Nothing, Knight
+    int[] pieceValues = {100, 900, 500, 1200, 300, 0, 300};
     ulong[] encodedTableLines = {
       0x0000000000000000,
       0x435C2A412F5617F8,
@@ -42,46 +44,6 @@ public class MyBot : IChessBot
       0xEEFDFDF9020217F8,
       0xE8FFF2F0F6101AF1,
       0x0000000000000000,
-      0x8EC3E9DE2ABEF6B7,
-      0xCEE43119102A05F4,
-      0xE029192C3958321E,
-      0xFA0C0D24192F0C0F,
-      0xF7030B09130D0EFB,
-      0xF0FA08070D0C11F5,
-      0xECDCF8FEFF0CF6F3,
-      0xB8F2D8E9F4EDF3F0,
-      0xEC03C8E7EFE305FB,
-      0xEE0BF4F715280CE0,
-      0xF5191D1B182219FF,
-      0xFD030D22191905FF,
-      0xFC09091217080703,
-      0x000A0A0A0A120C07,
-      0x030A0B00050E1701,
-      0xE9FEF6F2F7F8E5F2,
-      0x161D16232B06151D,
-      0x1216282A372E121E,
-      0xFD0D12190C1F2A0B,
-      0xF0F805121018FBF2,
-      0xE7EEF8FF06FB04F0,
-      0xE1EFF5F40200FDE9,
-      0xE2F5F2FAFF08FCCF,
-      0xF3F7010C0B05E7EE,
-      0xED001408281E1D1F,
-      0xF0E5FD01F5271325,
-      0xF7F4050514262027,
-      0xEEEEF5F5FF0CFF01,
-      0xFAEEFAF9FFFD02FE,
-      0xF601F8FFFD010A03,
-      0xE8FB0801050AFE01,
-      0xFFF4FA07F6EFEBDE,
-      0xD4100BF6DAE90109,
-      0x14FFF2FBFBFDE6EC,
-      0xFA1001F5F2040FF1,
-      0xF4F2F8EEEBEFF6E7,
-      0xDEFFEEE5E1E2E9DD,
-      0xF6F6F1E1E2EBF6EE,
-      0x0105FBD4E3F50605,
-      0xF61908DB05ED100A,
       0x0000000000000000,
       0x7A766C5C655A717F,
       0x40443A2E26243839,
@@ -90,30 +52,14 @@ public class MyBot : IChessBot
       0x0305FC0100FDFFFB,
       0x09050507090001FB,
       0x0000000000000000,
-      0xD8E6F7EDEBEED5BC,
-      0xEFFBEFFFFAEFF0DC,
-      0xF0F20706FFFAF3E4,
-      0xF4020F0F0F0805F4,
-      0xF4FC0B110B0C03F4,
-      0xF0FEFF0A07FEF2F1,
-      0xE3F2F9FDFFF2F0E2,
-      0xECDDF0F6F1F4DED4,
-      0xF6F2F8FBFBFAF4F0,
-      0xFBFD05F8FEF7FDF6,
-      0x01FB00FFFF040003,
-      0xFE0608060A070201,
-      0xFC02090D0507FEFA,
-      0xF8FE05070902FBF6,
-      0xF6F4FBFF03FAF6EE,
-      0xF0FAF0FDFAF5FDF4,
-      0x09070C0A08080503,
-      0x08090908FE020502,
-      0x0505050303FEFDFE,
-      0x030209010101FF01,
-      0x02030503FDFCFBF8,
-      0xFD00FDFFFBF8FBF5,
-      0xFCFC0001FAFAF8FE,
-      0xFA0102FFFDF703F2,
+      0xED001408281E1D1F,
+      0xF0E5FD01F5271325,
+      0xF7F4050514262027,
+      0xEEEEF5F5FF0CFF01,
+      0xFAEEFAF9FFFD02FE,
+      0xF601F8FFFD010A03,
+      0xE8FB0801050AFE01,
+      0xFFF4FA07F6EFEBDE,
       0xFA0F0F12120D070E,
       0xF40E161C28111500,
       0xF204062220180D06,
@@ -122,6 +68,30 @@ public class MyBot : IChessBot
       0xF5EE0A04060C0703,
       0xF1F0EBF5F5F0E7EA,
       0xE9EDF1E3FDEAF2E4,
+      0x161D16232B06151D,
+      0x1216282A372E121E,
+      0xFD0D12190C1F2A0B,
+      0xF0F805121018FBF2,
+      0xE7EEF8FF06FB04F0,
+      0xE1EFF5F40200FDE9,
+      0xE2F5F2FAFF08FCCF,
+      0xF3F7010C0B05E7EE,
+      0x09070C0A08080503,
+      0x08090908FE020502,
+      0x0505050303FEFDFE,
+      0x030209010101FF01,
+      0x02030503FDFCFBF8,
+      0xFD00FDFFFBF8FBF5,
+      0xFCFC0001FAFAF8FE,
+      0xFA0102FFFDF703F2,
+      0xD4100BF6DAE90109,
+      0x14FFF2FBFBFDE6EC,
+      0xFA1001F5F2040FF1,
+      0xF4F2F8EEEBEFF6E7,
+      0xDEFFEEE5E1E2E9DD,
+      0xF6F6F1E1E2EBF6EE,
+      0x0105FBD4E3F50605,
+      0xF61908DB05ED100A,
       0xCDE8F4F4F80A03F4,
       0xF80C0A0C0C1A1008,
       0x070C100A0E1F1E09,
@@ -129,24 +99,61 @@ public class MyBot : IChessBot
       0xF4FD0E10121006F8,
       0xF3FE080E100B05FA,
       0xEEF803090A03FDF4,
-      0xDCE9F2F8EDF6F0E3
+      0xDCE9F2F8EDF6F0E3,
+      0xEC03C8E7EFE305FB,
+      0xEE0BF4F715280CE0,
+      0xF5191D1B182219FF,
+      0xFD030D22191905FF,
+      0xFC09091217080703,
+      0x000A0A0A0A120C07,
+      0x030A0B00050E1701,
+      0xE9FEF6F2F7F8E5F2,
+      0xF6F2F8FBFBFAF4F0,
+      0xFBFD05F8FEF7FDF6,
+      0x01FB00FFFF040003,
+      0xFE0608060A070201,
+      0xFC02090D0507FEFA,
+      0xF8FE05070902FBF6,
+      0xF6F4FBFF03FAF6EE,
+      0xF0FAF0FDFAF5FDF4,
+      0x8EC3E9DE2ABEF6B7,
+      0xCEE43119102A05F4,
+      0xE029192C3958321E,
+      0xFA0C0D24192F0C0F,
+      0xF7030B09130D0EFB,
+      0xF0FA08070D0C11F5,
+      0xECDCF8FEFF0CF6F3,
+      0xB8F2D8E9F4EDF3F0,
+      0xD8E6F7EDEBEED5BC,
+      0xEFFBEFFFFAEFF0DC,
+      0xF0F20706FFFAF3E4,
+      0xF4020F0F0F0805F4,
+      0xF4FC0B110B0C03F4,
+      0xF0FEFF0A07FEF2F1,
+      0xE3F2F9FDFFF2F0E2,
+      0xECDDF0F6F1F4DED4
     };
 
     public MyBot(){
+      var watch = System.Diagnostics.Stopwatch.StartNew();
       // initialize the PST from the compacted data
-      for (int index = 0;  index < encodedTableLines.Length;  index++)
+      for (int index = 0, offset = 0; index < 96;  index++)
       {
+        if(index == 80)
+        {
+          offset = 1;
+        }
         byte[] bytes = BitConverter.GetBytes(encodedTableLines[index]);
+        int gamephase = (index / 8) % 2,
+            pieceNumber = index / 16,
+            rankNr = index % 8;
         for (int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
         {
-          // Gamephase = index/48
-          // Piecenumber = (index%48)/8
-          // Linenumber = index%8
-          // Squarenumber = byteIndex
-          // Indexing: Gamephase 0..1, Piece 0..5, Square 0..63
-          decodedTables[index/48,(index%48)/8,byteIndex + 8 * (index%8)] = (sbyte)bytes[7-byteIndex];
+          decodedTables[gamephase, pieceNumber + offset, byteIndex + 8 * rankNr] = (sbyte)bytes[7-byteIndex];
         }
       }
+      watch.Stop();
+      Console.WriteLine($"Time to init: {watch.ElapsedTicks * (1000L*1000L*1000L) / System.Diagnostics.Stopwatch.Frequency}");
     }
 
     public Move Think(Board _board, Timer _timer)
@@ -169,46 +176,40 @@ public class MyBot : IChessBot
       Console.WriteLine($"Searched Depth: {searchDepth}");
       Console.WriteLine($"Found move:\t\t{searchResult}");
       Console.WriteLine($"Nodes searched:\t\t{nodesChecked}");
+      Console.WriteLine($"Elapsed Nanoseconds:\t{averageTime}");
       return searchResult;
       // return search();
     }
 
     private int eval(bool isWhite)
     {
+      var watch = System.Diagnostics.Stopwatch.StartNew();
       int total = 0, square = 0;
-      (sbyte, int) val;
-      var vals = new Dictionary<char, (sbyte, int)>()
-      {
-        {'P', (0, 100)},
-        {'R', (3, 500)},
-        {'N', (1, 300)},
-        {'B', (2, 300)},
-        {'Q', (4, 900)},
-        {'K', (5, 1200)},
-      };
       // very crude evalutaion based on piece value and position according to Piece-Square Tables
       foreach (char fenChar in board.GetFenString().Split(' ')[0])
       {
-        char upperFenChar = Char.ToUpper(fenChar);
-        bool isPiece = vals.TryGetValue(upperFenChar, out val);
-        if(isPiece){
-          bool isWhitePiece = fenChar < 97;
-          int adjSquare = isWhitePiece ? square ^ 56 : square;
-          // result = value of piece + value of the square for specific piece
-          int result = val.Item2 + decodedTables[0,val.Item1,adjSquare];
-          // if it's a black piece, negate the result
-          total += isWhitePiece ? result : -result;
+        int fenCharNr = (int)fenChar;
+        //Console.WriteLine(square);
+        //bool isPiece = vals.TryGetValue(Char.ToUpper(fenChar), out val);
+        if(fenCharNr < 65)
+        {
+          if(fenCharNr == 47) continue;
+          square += (fenCharNr-1) & 7;
         }
         else
         {
-          // increment square counter by one less than the digit, since it'll increment by one later
-          if(Char.IsDigit(fenChar)) square += fenChar - '1';
+          // result = value of piece + value of the square for specific piece
+          int pieceNumber = Math.Max(fenCharNr | 32, 100) & 7,
+              gamephase = 0,
+              adjustedSquare = fenCharNr < 97 ? square ^ 56 : square;
+          int result = pieceValues[pieceNumber] + decodedTables[gamephase,pieceNumber,adjustedSquare];
+          // if it's a black piece, negate the result
+          total += fenChar < 97 ? result : -result;
         }
-        // if it's a '/', don't increment the square counter, otherwise do
-        square += fenChar == 47 ? 0 : 1;
-        // Original idea about evaluating from the FEN-String
-        //total += vals.TryGetValue(Char.ToUpper(fenChar), out val) ? ((int)fenChar < 97 ? val : -val) : 0;
+        square++;
       }
+      watch.Stop();
+      approxRollingAverage(watch.ElapsedTicks * (1000L*1000L*1000L) / System.Diagnostics.Stopwatch.Frequency);
       // since the result favors white, negate it if evaluating for blacks position
       return isWhite ? total : -total;
     }
@@ -285,5 +286,11 @@ public class MyBot : IChessBot
     private bool turnTimeElapsed()
     {
       return timer.MillisecondsElapsedThisTurn >= 1000;
+    }
+
+    private void approxRollingAverage(long newValue)
+    {
+      averageTime -= averageTime / 1000;
+      averageTime += (double) newValue / 1000;
     }
 }
