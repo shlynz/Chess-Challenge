@@ -12,10 +12,11 @@ public class MyBot : IChessBot
     int searchResultEval;
     int searchDepth = 3;
     int nodesChecked;
+    int evalsRun;
     double averageTime = 0;
 
     // https://www.chessprogramming.org/Transposition_Table
-    static ulong transpositionTableSize = 999999;
+    static ulong transpositionTableSize = Convert.ToUInt64(Math.Pow(2, 22));
     // Details: Key, Move, Depth, Score, Bound
     struct TranspositionTableEntry
     {
@@ -158,12 +159,15 @@ public class MyBot : IChessBot
 
     public Move Think(Board _board, Timer _timer)
     {
+      var watch = System.Diagnostics.Stopwatch.StartNew();
       board = _board;
       timer = _timer;
       searchResult = Move.NullMove;
       nodesChecked = 0;
       Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
+      evalsRun = 0;
       searchDepth = 3;
+      long memoryUsage = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1000L / 1000L;
       int previousBest = -999999999;
       foreach (Move move in board.GetLegalMoves())
       {
@@ -176,16 +180,25 @@ public class MyBot : IChessBot
           searchResult = move;
         }
       }
-      Console.WriteLine($"Searched Depth: {searchDepth}");
+      Console.WriteLine($"Searched Depth:\t\t{searchDepth}");
       Console.WriteLine($"Found move:\t\t{searchResult}");
       Console.WriteLine($"Nodes searched:\t\t{nodesChecked}");
-      Console.WriteLine($"Elapsed Nanoseconds:\t{averageTime}");
+      Console.WriteLine($"Evals run:\t\t{evalsRun}");
+      Console.WriteLine($"Avg Eval Nanoseconds:\t{averageTime}");
+      double searchTimeTaken = watch.ElapsedMilliseconds / 1000.0;
+      Console.WriteLine($"Search time:\t\t{searchTimeTaken}s");
+      Console.WriteLine($"Nodes per Second:\t{nodesChecked/searchTimeTaken}nps");
+      Console.WriteLine($"Evals per Second:\t{evalsRun/searchTimeTaken}eps");
+      Console.WriteLine($"Immediate TT-Results:\t{nodesChecked-evalsRun}");
+      Console.WriteLine($"Shortcut percent:\t{(double)evalsRun/(double)nodesChecked*100}%");
+      Console.WriteLine($"Memory usage:\t\t{memoryUsage}");
       return searchResult;
       // return search();
     }
 
     private int eval(bool isWhite)
     {
+      evalsRun++;
       var watch = System.Diagnostics.Stopwatch.StartNew();
       int total = 0, square = 0;
       // very crude evalutaion based on piece value and position according to Piece-Square Tables
@@ -221,6 +234,7 @@ public class MyBot : IChessBot
     // currently doesn't care about check or checkmate
     private int search(int depth, int alpha, int beta)
     {
+      nodesChecked++;
       int originalAlpha = alpha;
       ulong zobristKey = board.ZobristKey;
 
