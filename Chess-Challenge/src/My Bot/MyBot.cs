@@ -161,16 +161,19 @@ public class MyBot : IChessBot
       board = _board;
       timer = _timer;
       searchResult = Move.NullMove;
-      searchResultEval = -999999999;
       nodesChecked = 0;
       Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
-      for(searchDepth = 2; searchDepth <= 3; searchDepth++)
+      searchDepth = 3;
+      int previousBest = -999999999;
+      foreach (Move move in board.GetLegalMoves())
       {
-        Console.WriteLine(singleSearchFunction(searchDepth, searchResultEval, 999999999));
-        Console.WriteLine(searchResult);
-        if(turnTimeElapsed())
+        board.MakeMove(move);
+        int result = -search(searchDepth);
+        board.UndoMove(move);
+        if (result > previousBest)
         {
-          break;
+          previousBest = result;
+          searchResult = move;
         }
       }
       Console.WriteLine($"Searched Depth: {searchDepth}");
@@ -214,60 +217,22 @@ public class MyBot : IChessBot
       return isWhite ? total : -total;
     }
 
-    // attempt to compact the search into a single function
-    private int singleSearchFunction(int depth, int alpha, int beta)
+    // rewriting the search again 'cause I somehow borked it again
+    private int search(int depth)
     {
-      if(board.IsRepeatedPosition()) return 0;
-
-      // check if the current position has been reached already
-      ulong currentKey = board.ZobristKey;
-      TranspositionTableEntry transpositionTableEntry = transpositionTable[currentKey % transpositionTableSize];
-      // if it wasn't on the first iteration, return that score instead of evaluating again
-      if(depth != searchDepth && transpositionTableEntry.key == currentKey)
-      {
-        // this breaks the search at the moment...
-        // return transpositionTableEntry.score;
-      }
-      nodesChecked++;
-
-      Move bestMove = Move.NullMove;
-      int bestEval = -999999999;
-
-      Move[] moves = board.GetLegalMoves(depth <= 0);
-
-      if(depth <= 0 && moves.Length == 0)
+      Move[] moves = board.GetLegalMoves();
+      if (depth == 0 || moves.Length == 0)
       {
         return eval(board.IsWhiteToMove);
       }
-
-      foreach (Move move in order(moves))
+      int val = -999999999;
+      foreach (Move move in moves)
       {
         board.MakeMove(move);
-        int result = -singleSearchFunction(depth-1, -beta, -alpha);
+        val = Math.Max(val, -search(depth-1));
         board.UndoMove(move);
-
-        if(result >= searchResultEval)
-        {
-          bestEval = result;
-          bestMove = move;
-          if(depth == searchDepth)
-          {
-          //Console.WriteLine($"Result: {result}, Best Eval: {bestEval}, {move}, Best {bestMove}");
-            searchResult = bestMove;
-            searchResultEval = bestEval;
-          }
-          if(result >= beta)
-          {
-            break;
-          }
-          alpha = Math.Max(alpha, result);
-        }
       }
-
-      if(board.GetLegalMoves().Length == 0) return board.IsInCheck() ? -999999999 : 0;
-      // add evaluated position to the transposition table
-      transpositionTable[currentKey % transpositionTableSize] = new TranspositionTableEntry(currentKey, bestMove, depth, alpha);
-      return bestEval;
+      return val;
     }
 
     // Crude attempt to order moves, basically just puts captures infront, ordered by MVV/LVA idea
