@@ -16,17 +16,17 @@ public class MyBot : IChessBot
 
     // https://www.chessprogramming.org/Transposition_Table
     static ulong transpositionTableSize = 999999;
+    // Details: Key, Move, Depth, Score, Bound
     struct TranspositionTableEntry
     {
       public ulong key;
-      public Move move;
-      public int depth, score;
-      public TranspositionTableEntry(ulong key, Move move, int depth, int score)
+      public int depth, score, bound;
+      public TranspositionTableEntry(ulong key, int depth, int score, int bound)
       {
         this.key = key;
-        this.move = move;
         this.depth = depth;
         this.score = score;
+        this.bound = bound;
       }
     }
     TranspositionTableEntry[] transpositionTable = new TranspositionTableEntry[transpositionTableSize];
@@ -221,11 +221,37 @@ public class MyBot : IChessBot
     // currently doesn't care about check or checkmate
     private int search(int depth, int alpha, int beta)
     {
+      int originalAlpha = alpha;
+      ulong zobristKey = board.ZobristKey;
+
+      TranspositionTableEntry transpositionTableEntry = transpositionTable[zobristKey % transpositionTableSize];
+      if (transpositionTableEntry.key == zobristKey && transpositionTableEntry.depth >= depth)
+      {
+        if (transpositionTableEntry.bound == 0)
+        {
+          return transpositionTableEntry.score;
+        }
+        else if (transpositionTableEntry.bound == -1)
+        {
+          alpha = Math.Max(alpha, transpositionTableEntry.score);
+        }
+        else
+        {
+          beta = Math.Min(beta, transpositionTableEntry.score);
+        }
+
+        if (alpha >= beta)
+        {
+          return transpositionTableEntry.score;
+        }
+      }
+
       Move[] moves = board.GetLegalMoves();
       if (depth == 0 || moves.Length == 0)
       {
         return eval(board.IsWhiteToMove);
       }
+
       int val = -999999999;
       foreach (Move move in moves)
       {
@@ -238,6 +264,22 @@ public class MyBot : IChessBot
           break;
         }
       }
+
+      int bound;
+      if (val <= originalAlpha)
+      {
+        bound = 1;
+      }
+      else if (val >= beta)
+      {
+        bound = -1;
+      }
+      else
+      {
+        bound = 0;
+      }
+      transpositionTable[zobristKey % transpositionTableSize] = new TranspositionTableEntry(zobristKey, depth, val, bound);
+
       return val;
     }
 
