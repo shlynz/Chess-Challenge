@@ -168,7 +168,7 @@ public class MyBot : IChessBot
       foreach (Move move in board.GetLegalMoves())
       {
         board.MakeMove(move);
-        int result = -search(searchDepth);
+        int result = -search(searchDepth, -999999999, 999999999);
         board.UndoMove(move);
         if (result > previousBest)
         {
@@ -218,7 +218,8 @@ public class MyBot : IChessBot
     }
 
     // rewriting the search again 'cause I somehow borked it again
-    private int search(int depth)
+    // currently doesn't care about check or checkmate
+    private int search(int depth, int alpha, int beta)
     {
       Move[] moves = board.GetLegalMoves();
       if (depth == 0 || moves.Length == 0)
@@ -229,8 +230,13 @@ public class MyBot : IChessBot
       foreach (Move move in moves)
       {
         board.MakeMove(move);
-        val = Math.Max(val, -search(depth-1));
+        val = Math.Max(val, -search(depth-1, -beta, -alpha));
         board.UndoMove(move);
+        alpha = Math.Max(alpha, val);
+        if(alpha >= beta)
+        {
+          break;
+        }
       }
       return val;
     }
