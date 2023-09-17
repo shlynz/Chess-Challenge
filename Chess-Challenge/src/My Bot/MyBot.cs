@@ -312,7 +312,7 @@ public class MyBot : IChessBot
       for (int index = 0; index < moves.Length; index++)
       {
         Move move = moves[index];
-        moveScores[index] = move.IsCapture ? (move.CapturePieceType - move.MovePieceType) * 100 : 0;
+        moveScores[index] = move.IsCapture ? -(move.CapturePieceType - move.MovePieceType) * 100 : 0;
       }
       Array.Sort(moveScores, moves);
       return moves;
