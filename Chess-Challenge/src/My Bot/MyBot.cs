@@ -190,7 +190,7 @@ public class MyBot : IChessBot
       Console.WriteLine($"Nodes per Second:\t{nodesChecked/searchTimeTaken}nps");
       Console.WriteLine($"Evals per Second:\t{evalsRun/searchTimeTaken}eps");
       Console.WriteLine($"Immediate TT-Results:\t{nodesChecked-evalsRun}");
-      Console.WriteLine($"Shortcut percent:\t{(double)evalsRun/(double)nodesChecked*100}%");
+      Console.WriteLine($"Shortcut percent:\t{100-((double)evalsRun/(double)nodesChecked*100)}%");
       Console.WriteLine($"Memory usage:\t\t{memoryUsage}");
       return searchResult;
       // return search();
