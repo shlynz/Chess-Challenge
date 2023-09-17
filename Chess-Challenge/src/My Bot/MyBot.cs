@@ -238,6 +238,12 @@ public class MyBot : IChessBot
       int originalAlpha = alpha;
       ulong zobristKey = board.ZobristKey;
 
+      // Repeated position is worse than advantage, but better than disadvantage
+      if(board.IsRepeatedPosition())
+      {
+        return 0;
+      }
+
       TranspositionTableEntry transpositionTableEntry = transpositionTable[zobristKey % transpositionTableSize];
       if (transpositionTableEntry.key == zobristKey && transpositionTableEntry.depth >= depth)
       {
@@ -260,13 +266,15 @@ public class MyBot : IChessBot
         }
       }
 
-      Move[] moves = board.GetLegalMoves();
-      if (depth == 0 || moves.Length == 0)
+      Move[] moves = order(board.GetLegalMoves(depth <= 0));
+      int val = -999999999;
+      if (depth < 0)
       {
-        return eval(board.IsWhiteToMove);
+        val = eval(board.IsWhiteToMove);
+        if (val >= beta) return val;
+        alpha = Math.Max(alpha, val);
       }
 
-      int val = -999999999;
       foreach (Move move in moves)
       {
         board.MakeMove(move);
