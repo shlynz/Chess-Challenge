@@ -9,28 +9,15 @@ public class MyBot : IChessBot
     Board board;
     Timer timer;
     Move searchResult;
-    int searchResultEval;
-    int searchDepth = 3;
-    int nodesChecked;
-    int evalsRun;
+    int searchDepth = 3,
+        nodesChecked,
+        evalsRun;
     double averageTime = 0;
 
     // https://www.chessprogramming.org/Transposition_Table
     static ulong transpositionTableSize = Convert.ToUInt64(Math.Pow(2, 22));
-    // Details: Key, Move, Depth, Score, Bound
-    struct TranspositionTableEntry
-    {
-      public ulong key;
-      public int depth, score, bound;
-      public TranspositionTableEntry(ulong key, int depth, int score, int bound)
-      {
-        this.key = key;
-        this.depth = depth;
-        this.score = score;
-        this.bound = bound;
-      }
-    }
-    TranspositionTableEntry[] transpositionTable = new TranspositionTableEntry[transpositionTableSize];
+    // ulong key, int depth, int score, int bound
+    (ulong, int, int, int)[] transpositionTable = new (ulong, int, int, int)[transpositionTableSize];
 
     // Piece-Square Tables from https://www.chessprogramming.org/Piece-Square_Tables
     sbyte[,,] decodedTables = new sbyte[2,7,64];
@@ -138,7 +125,6 @@ public class MyBot : IChessBot
     public MyBot(){
       var watch = System.Diagnostics.Stopwatch.StartNew();
       // initialize the PST from the compacted data
-      Guid test = new Guid(0b00000000000000000000000000000001);
       for (int index = 0, offset = 0; index < 96;  index++)
       {
         if(index == 80)
@@ -146,12 +132,9 @@ public class MyBot : IChessBot
           offset = 1;
         }
         byte[] bytes = BitConverter.GetBytes(encodedTableLines[index]);
-        int gamephase = (index / 8) % 2,
-            pieceNumber = index / 16,
-            rankNr = index % 8;
         for (int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
         {
-          decodedTables[gamephase, pieceNumber + offset, byteIndex + 8 * rankNr] = (sbyte)bytes[7-byteIndex];
+          decodedTables[(index / 8) % 2, index / 16 + offset, byteIndex + 8 * (index%8)] = (sbyte)bytes[7-byteIndex];
         }
       }
       watch.Stop();
@@ -161,6 +144,7 @@ public class MyBot : IChessBot
     public Move Think(Board _board, Timer _timer)
     {
       var watch = System.Diagnostics.Stopwatch.StartNew();
+      // transfer important stuff to global scope since it's fewer tokens
       board = _board;
       timer = _timer;
       searchResult = Move.NullMove;
@@ -169,23 +153,23 @@ public class MyBot : IChessBot
       evalsRun = 0;
       long memoryUsage = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1000L / 1000L;
       int previousBest = -999999999;
+      // as long as there is still time left in the current move, go one iteration deeper
       for (searchDepth = 3; searchDepth <= 50; searchDepth++)
       {
+        // try every immediate move and start searching from there
         foreach (Move move in board.GetLegalMoves())
         {
           board.MakeMove(move);
           int result = -search(searchDepth, -999999999, 999999999);
           board.UndoMove(move);
+          // keep note of the best root move
           if (result > previousBest)
           {
             previousBest = result;
             searchResult = move;
           }
         }
-        if (turnTimeElapsed())
-        {
-          break;
-        }
+        if (timer.MillisecondsElapsedThisTurn >= 1000) break;
       }
       Console.WriteLine($"Searched Depth:\t\t{searchDepth}");
       Console.WriteLine($"Found move:\t\t{searchResult}");
@@ -200,32 +184,26 @@ public class MyBot : IChessBot
       Console.WriteLine($"Shortcut percent:\t{100-((double)evalsRun/(double)nodesChecked*100)}%");
       Console.WriteLine($"Memory usage:\t\t{memoryUsage}");
       return searchResult;
-      // return search();
     }
 
     private int eval(bool isWhite)
     {
       evalsRun++;
       var watch = System.Diagnostics.Stopwatch.StartNew();
-      int total = 0, square = 0;
+      int total = 0, square = 0, pieceNumber, result;
       // very crude evalutaion based on piece value and position according to Piece-Square Tables
       foreach (char fenChar in board.GetFenString().Split(' ')[0])
       {
-        int fenCharNr = (int)fenChar;
-        //Console.WriteLine(square);
-        //bool isPiece = vals.TryGetValue(Char.ToUpper(fenChar), out val);
-        if(fenCharNr < 65)
+        if(fenChar < 65)
         {
-          if(fenCharNr == 47) continue;
-          square += (fenCharNr-1) & 7;
+          if(fenChar == 47) continue;
+          square += (fenChar-1) & 7;
         }
         else
         {
           // result = value of piece + value of the square for specific piece
-          int pieceNumber = Math.Max(fenCharNr | 32, 100) & 7,
-              gamephase = 0,
-              adjustedSquare = fenCharNr < 97 ? square ^ 56 : square;
-          int result = pieceValues[pieceNumber] + decodedTables[gamephase,pieceNumber,adjustedSquare];
+          pieceNumber = Math.Max(fenChar | 32, 100) & 7;
+          result = pieceValues[pieceNumber] + decodedTables[0,pieceNumber,fenChar < 97 ? square ^ 56 : square];
           // if it's a black piece, negate the result
           total += fenChar < 97 ? result : -result;
         }
@@ -242,39 +220,34 @@ public class MyBot : IChessBot
     private int search(int depth, int alpha, int beta)
     {
       nodesChecked++;
-      int originalAlpha = alpha;
+      int originalAlpha = alpha,
+          val = -999999999;
       ulong zobristKey = board.ZobristKey;
 
       // Repeated position is worse than advantage, but better than disadvantage
-      if(board.IsRepeatedPosition())
-      {
-        return 0;
-      }
+      if(board.IsRepeatedPosition()) return 0;
 
-      TranspositionTableEntry transpositionTableEntry = transpositionTable[zobristKey % transpositionTableSize];
-      if (transpositionTableEntry.key == zobristKey && transpositionTableEntry.depth >= depth)
+      // check if the position has been evaluated already
+      var (entryKey, entryDepth, entryScore, entryBound) = transpositionTable[zobristKey % transpositionTableSize];
+      if (entryKey == zobristKey && entryDepth >= depth)
       {
-        if (transpositionTableEntry.bound == 0)
+        if (entryBound == -1)
         {
-          return transpositionTableEntry.score;
-        }
-        else if (transpositionTableEntry.bound == -1)
-        {
-          alpha = Math.Max(alpha, transpositionTableEntry.score);
+          alpha = Math.Max(alpha, entryScore);
         }
         else
         {
-          beta = Math.Min(beta, transpositionTableEntry.score);
+          beta = Math.Min(beta, entryScore);
         }
 
-        if (alpha >= beta)
+        if (entryBound == 0 || alpha >= beta)
         {
-          return transpositionTableEntry.score;
+          return entryScore;
         }
       }
 
+      // only check captures after depth has been reached
       Move[] moves = order(board.GetLegalMoves(depth <= 0));
-      int val = -999999999;
       if (depth < 0)
       {
         val = eval(board.IsWhiteToMove);
@@ -294,25 +267,12 @@ public class MyBot : IChessBot
         }
       }
 
-      int bound;
-      if (val <= originalAlpha)
-      {
-        bound = 1;
-      }
-      else if (val >= beta)
-      {
-        bound = -1;
-      }
-      else
-      {
-        bound = 0;
-      }
-      transpositionTable[zobristKey % transpositionTableSize] = new TranspositionTableEntry(zobristKey, depth, val, bound);
-
+      transpositionTable[zobristKey % transpositionTableSize] = (zobristKey, depth, val, val <= originalAlpha ? 1 : val >= beta ? -1 : 0);
       return val;
     }
 
     // Crude attempt to order moves, basically just puts captures infront, ordered by MVV/LVA idea
+    // Will have to move this method inside the search function since it'll be fewer tokens
     private Move[] order(Move[] moves)
     {
       int[] moveScores = new int[moves.Length];
@@ -325,11 +285,7 @@ public class MyBot : IChessBot
       return moves;
     }
 
-    private bool turnTimeElapsed()
-    {
-      return timer.MillisecondsElapsedThisTurn >= 1000;
-    }
-
+    // utility/debug function
     private void approxRollingAverage(long newValue)
     {
       averageTime -= averageTime / 1000;
