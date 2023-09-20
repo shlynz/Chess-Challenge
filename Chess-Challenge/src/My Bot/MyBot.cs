@@ -138,6 +138,7 @@ public class MyBot : IChessBot
     public MyBot(){
       var watch = System.Diagnostics.Stopwatch.StartNew();
       // initialize the PST from the compacted data
+      Guid test = new Guid(0b00000000000000000000000000000001);
       for (int index = 0, offset = 0; index < 96;  index++)
       {
         if(index == 80)
@@ -166,18 +167,24 @@ public class MyBot : IChessBot
       nodesChecked = 0;
       Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
       evalsRun = 0;
-      searchDepth = 3;
       long memoryUsage = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1000L / 1000L;
       int previousBest = -999999999;
-      foreach (Move move in board.GetLegalMoves())
+      for (searchDepth = 3; searchDepth <= 50; searchDepth++)
       {
-        board.MakeMove(move);
-        int result = -search(searchDepth, -999999999, 999999999);
-        board.UndoMove(move);
-        if (result > previousBest)
+        foreach (Move move in board.GetLegalMoves())
         {
-          previousBest = result;
-          searchResult = move;
+          board.MakeMove(move);
+          int result = -search(searchDepth, -999999999, 999999999);
+          board.UndoMove(move);
+          if (result > previousBest)
+          {
+            previousBest = result;
+            searchResult = move;
+          }
+        }
+        if (turnTimeElapsed())
+        {
+          break;
         }
       }
       Console.WriteLine($"Searched Depth:\t\t{searchDepth}");
