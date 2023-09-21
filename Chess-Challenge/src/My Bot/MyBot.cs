@@ -1,5 +1,4 @@
-﻿
-using ChessChallenge.API;
+﻿using ChessChallenge.API;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -255,11 +254,26 @@ public class MyBot : IChessBot
         alpha = Math.Max(alpha, val);
       }
 
+      bool firstMove = true;
+      int score;
       foreach (Move move in moves)
       {
         board.MakeMove(move);
-        val = Math.Max(val, -search(depth-1, -beta, -alpha));
+        if (firstMove)
+        {
+          score = -search(depth-1, -beta, -alpha);
+        }
+        else
+        {
+          score = -search(depth-1, -alpha - 1, -alpha);
+          if (alpha < score && score < beta)
+          {
+            score = -search(depth-1, -beta, -alpha);
+          }
+        }
+        firstMove = false;
         board.UndoMove(move);
+        val = Math.Max(val, score);
         alpha = Math.Max(alpha, val);
         if(alpha >= beta)
         {
