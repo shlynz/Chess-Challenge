@@ -8,15 +8,15 @@ public class MyBot : IChessBot
     Board board;
     Timer timer;
     Move searchResult;
-    int searchDepth = 3,
+    int searchDepth,
         nodesChecked,
         evalsRun;
     double averageTime = 0;
 
     // https://www.chessprogramming.org/Transposition_Table
     static ulong transpositionTableSize = Convert.ToUInt64(Math.Pow(2, 22));
-    // ulong key, int depth, int score, int bound
-    (ulong, int, int, int)[] transpositionTable = new (ulong, int, int, int)[transpositionTableSize];
+    // ulong key, int depth, int score, int bound, Move move
+    (ulong, int, int, int, Move)[] transpositionTable = new (ulong, int, int, int, Move)[transpositionTableSize];
 
     // Piece-Square Tables from https://www.chessprogramming.org/Piece-Square_Tables
     sbyte[,,] decodedTables = new sbyte[2,7,64];
@@ -147,49 +147,49 @@ public class MyBot : IChessBot
       board = _board;
       timer = _timer;
       searchResult = Move.NullMove;
-      nodesChecked = 0;
       Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
-      evalsRun = 0;
       long memoryUsage = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1000L / 1000L;
-      int previousBest = -999999999;
       // as long as there is still time left in the current move, go one iteration deeper
-      for (searchDepth = 3; searchDepth <= 50; searchDepth++)
+      int totalEvalsRun = 0;
+      int totalNodesChecked = 0;
+      Move bestFullSearchResult = searchResult;
+      for (searchDepth = 0; searchDepth < 25;)
       {
-        // try every immediate move and start searching from there
-        foreach (Move move in board.GetLegalMoves())
-        {
-          board.MakeMove(move);
-          int result = -search(searchDepth, -999999999, 999999999);
-          board.UndoMove(move);
+        nodesChecked = 0;
+        evalsRun = 0;
+        int _ = -search(++searchDepth, -99999, 99999);
           // keep note of the best root move
-          if (result > previousBest)
-          {
-            previousBest = result;
-            searchResult = move;
-          }
-        }
-        if (timer.MillisecondsElapsedThisTurn >= 1000) break;
+        Console.WriteLine($"Depth: {searchDepth}, Nodes: {nodesChecked}");
+        totalEvalsRun += evalsRun;
+        totalNodesChecked += nodesChecked;
+        if (isTurnTimeOver()) break;
+        bestFullSearchResult = searchResult;
       }
       Console.WriteLine($"Searched Depth:\t\t{searchDepth}");
       Console.WriteLine($"Found move:\t\t{searchResult}");
-      Console.WriteLine($"Nodes searched:\t\t{nodesChecked}");
-      Console.WriteLine($"Evals run:\t\t{evalsRun}");
+      Console.WriteLine($"Nodes searched:\t\t{totalNodesChecked}");
+      Console.WriteLine($"Evals run:\t\t{totalEvalsRun}");
       Console.WriteLine($"Avg Eval Nanoseconds:\t{averageTime}");
       double searchTimeTaken = watch.ElapsedMilliseconds / 1000.0;
       Console.WriteLine($"Search time:\t\t{searchTimeTaken}s");
-      Console.WriteLine($"Nodes per Second:\t{nodesChecked/searchTimeTaken}nps");
-      Console.WriteLine($"Evals per Second:\t{evalsRun/searchTimeTaken}eps");
-      Console.WriteLine($"Immediate TT-Results:\t{nodesChecked-evalsRun}");
-      Console.WriteLine($"Shortcut percent:\t{100-((double)evalsRun/(double)nodesChecked*100)}%");
+      Console.WriteLine($"Nodes per Second:\t{totalNodesChecked/searchTimeTaken}nps");
+      Console.WriteLine($"Evals per Second:\t{totalEvalsRun/searchTimeTaken}eps");
+      Console.WriteLine($"Immediate TT-Results:\t{totalNodesChecked-totalEvalsRun}");
+      Console.WriteLine($"Shortcut percent:\t{100-((double)totalEvalsRun/(double)totalNodesChecked*100)}%");
       Console.WriteLine($"Memory usage:\t\t{memoryUsage}");
-      return searchResult;
+      return bestFullSearchResult;
     }
 
     private int eval(bool isWhite)
     {
       evalsRun++;
       var watch = System.Diagnostics.Stopwatch.StartNew();
-      int total = 0, square = 0, pieceNumber, result;
+      string fenString = board.GetFenString().Split(' ')[0];
+      int total = 0,
+          square = 0,
+          pieceCount = 1 - fenString.Count(char.IsLetter)/17,
+          pieceNumber,
+          result;
       // very crude evalutaion based on piece value and position according to Piece-Square Tables
       foreach (char fenChar in board.GetFenString().Split(' ')[0])
       {
@@ -202,7 +202,7 @@ public class MyBot : IChessBot
         {
           // result = value of piece + value of the square for specific piece
           pieceNumber = Math.Max(fenChar | 32, 100) & 7;
-          result = pieceValues[pieceNumber] + decodedTables[0,pieceNumber,fenChar < 97 ? square ^ 56 : square];
+          result = pieceValues[pieceNumber] + decodedTables[pieceCount,pieceNumber,fenChar < 97 ? square ^ 56 : square];
           // if it's a black piece, negate the result
           total += fenChar < 97 ? result : -result;
         }
@@ -214,89 +214,83 @@ public class MyBot : IChessBot
       return isWhite ? total : -total;
     }
 
-    // rewriting the search again 'cause I somehow borked it again
-    // currently doesn't care about check or checkmate
     private int search(int depth, int alpha, int beta)
     {
       nodesChecked++;
       int originalAlpha = alpha,
-          val = -999999999;
+          bestScore = -99999;
+      bool isRoot = searchDepth - depth == 0,
+        depthReached = depth <= 0;
       ulong zobristKey = board.ZobristKey;
+      Move bestMove = Move.NullMove;
 
       // Repeated position is worse than advantage, but better than disadvantage
-      if(board.IsRepeatedPosition()) return 0;
+      if (!isRoot && board.IsRepeatedPosition()) return 0;
 
       // check if the position has been evaluated already
-      var (entryKey, entryDepth, entryScore, entryBound) = transpositionTable[zobristKey % transpositionTableSize];
-      if (entryKey == zobristKey && entryDepth >= depth)
+      var (entryKey, entryDepth, entryScore, entryBound, entryMove) = transpositionTable[zobristKey % transpositionTableSize];
+      if (!isRoot && entryKey == zobristKey && entryDepth >= depth)
       {
-        if (entryBound == -1)
-        {
-          alpha = Math.Max(alpha, entryScore);
-        }
-        else
-        {
-          beta = Math.Min(beta, entryScore);
-        }
-
-        if (entryBound == 0 || alpha >= beta)
-        {
-          return entryScore;
-        }
+        if (entryBound == -1) alpha = Math.Max(alpha, entryScore);
+        if (entryBound == 1) beta = Math.Min(beta, entryScore);
+        if (entryBound == 0 || alpha >= beta) return entryScore;
       }
 
+      Move[] moves = board.GetLegalMoves(depthReached);
       // only check captures after depth has been reached
-      Move[] moves = order(board.GetLegalMoves(depth <= 0));
-      if (depth < 0)
+      if (depthReached)
       {
-        val = eval(board.IsWhiteToMove);
-        if (val >= beta) return val;
-        alpha = Math.Max(alpha, val);
+        bestScore = eval(board.IsWhiteToMove);
+        alpha = Math.Max(alpha, bestScore);
+        if (beta < bestScore) return bestScore;
+      }
+      else if (moves.Length == 0)
+      {
+        // accept (latest) defeat instead of refusing all moves
+        // accept stalemate if otherwise would result in losing
+        return board.IsInCheck() ? searchDepth - depth - 99999 : 0;
       }
 
-      bool firstMove = true;
-      int score;
-      foreach (Move move in moves)
-      {
-        board.MakeMove(move);
-        if (firstMove)
-        {
-          score = -search(depth-1, -beta, -alpha);
-        }
-        else
-        {
-          score = -search(depth-1, -alpha - 1, -alpha);
-          if (alpha < score && score < beta)
-          {
-            score = -search(depth-1, -beta, -alpha);
-          }
-        }
-        firstMove = false;
-        board.UndoMove(move);
-        val = Math.Max(val, score);
-        alpha = Math.Max(alpha, val);
-        if(alpha >= beta)
-        {
-          break;
-        }
-      }
-
-      transpositionTable[zobristKey % transpositionTableSize] = (zobristKey, depth, val, val <= originalAlpha ? 1 : val >= beta ? -1 : 0);
-      return val;
-    }
-
-    // Crude attempt to order moves, basically just puts captures infront, ordered by MVV/LVA idea
-    // Will have to move this method inside the search function since it'll be fewer tokens
-    private Move[] order(Move[] moves)
-    {
       int[] moveScores = new int[moves.Length];
       for (int index = 0; index < moves.Length; index++)
       {
         Move move = moves[index];
-        moveScores[index] = move.IsCapture ? -(move.CapturePieceType - move.MovePieceType) * 100 : 0;
+        moveScores[index] = -(
+          entryMove == move ? 25000 :
+          move.IsCapture ? ((int)move.CapturePieceType * 10) - (int)move.MovePieceType :
+          0);
       }
       Array.Sort(moveScores, moves);
-      return moves;
+
+      foreach (Move move in moves)
+      {
+        // abort if the time cutoff has been reached
+        // return something greater than max value to force future cutoffs
+        if(isTurnTimeOver()) return 999999;
+
+        board.MakeMove(move);
+        int score = -search(depth-1, -beta, -alpha);
+        //Console.WriteLine($"Score: {score}, {move}");
+        board.UndoMove(move);
+        if (bestScore < score)
+        {
+          //if (score >= 99999 || score <= -99999) Console.WriteLine($"New best {move}, previous {bestMove}, score: {score}, previous score: {bestScore}");
+          bestScore = score;
+          bestMove = move;
+          if (isRoot)
+          {
+            searchResult = move;
+          }
+          alpha = Math.Max(alpha, bestScore);
+          if (alpha >= beta)
+          {
+            break;
+          }
+        }
+      }
+
+      transpositionTable[zobristKey % transpositionTableSize] = (zobristKey, depth, bestScore, bestScore <= originalAlpha ? 1 : bestScore >= beta ? -1 : 0, bestMove);
+      return bestScore;
     }
 
     // utility/debug function
@@ -304,5 +298,14 @@ public class MyBot : IChessBot
     {
       averageTime -= averageTime / 1000;
       averageTime += (double) newValue / 1000;
+    }
+
+    private bool isTurnTimeOver()
+    {
+      // The average amount of turns per chess game, plus some leeway seems to be slightly above 40
+      // thus the bot get's the time of the increment and around 1/40 of the remaining time on
+      // it's clock for the current turn
+      // (source: https://chess.stackexchange.com/a/2507)
+      return timer.MillisecondsElapsedThisTurn - timer.IncrementMilliseconds > timer.MillisecondsRemaining / 40;
     }
 }
