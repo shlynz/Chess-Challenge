@@ -5,16 +5,16 @@ using System.Linq;
 
 public class MyBot : IChessBot
 {
+    // TODO need to compact further, goal would be 75% of the limit c:
     Board board;
     Timer timer;
     Move searchResult;
-    int searchDepth,
-        nodesChecked,
-        evalsRun;
-    double averageTime = 0;
+    int searchDepth;
 
     // https://www.chessprogramming.org/Transposition_Table
-    static ulong transpositionTableSize = Convert.ToUInt64(Math.Pow(2, 22));
+    // good chunk less than 2^22, because that seems to go over the memory limit :c
+    // this should be just above 210MB, assuming the limit is in Bytes not bits, bits seems way to small
+    static ulong transpositionTableSize = 2500000;
     // ulong key, int depth, int score, int bound, Move move
     (ulong, int, int, int, Move)[] transpositionTable = new (ulong, int, int, int, Move)[transpositionTableSize];
 
@@ -50,100 +50,88 @@ public class MyBot : IChessBot
     };
 
     public MyBot(){
-      var watch = System.Diagnostics.Stopwatch.StartNew();
       // initialize the PST from the compacted data
       for (int index = 0, offset = 0; index < 96;  index++)
       {
-        if(index == 80)
-        {
-          offset = 1;
-        }
+        if (index == 80) offset = 1;
         byte[] bytes = BitConverter.GetBytes(encodedTableLines[index]);
         for (int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
         {
           decodedTables[(index / 8) % 2, index / 16 + offset, byteIndex + 8 * (index%8)] = (sbyte)bytes[7-byteIndex];
         }
       }
-      watch.Stop();
-      Console.WriteLine($"Time to init: {watch.ElapsedTicks * (1000L*1000L*1000L) / System.Diagnostics.Stopwatch.Frequency}");
     }
 
     public Move Think(Board _board, Timer _timer)
     {
-      var watch = System.Diagnostics.Stopwatch.StartNew();
       // transfer important stuff to global scope since it's fewer tokens
       board = _board;
       timer = _timer;
       searchResult = Move.NullMove;
-      Console.WriteLine($"Eval of opponent move:\t{eval(!board.IsWhiteToMove)}");
-      long memoryUsage = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64 / 1000L / 1000L;
       // as long as there is still time left in the current move, go one iteration deeper
-      int totalEvalsRun = 0;
-      int totalNodesChecked = 0;
       Move bestFullSearchResult = searchResult;
       for (searchDepth = 0; searchDepth < 25;)
       {
-        nodesChecked = 0;
-        evalsRun = 0;
-        int _ = -search(++searchDepth, -99999, 99999);
-          // keep note of the best root move
-        Console.WriteLine($"Depth: {searchDepth}, Nodes: {nodesChecked}");
-        totalEvalsRun += evalsRun;
-        totalNodesChecked += nodesChecked;
-        if (isTurnTimeOver()) break;
+        // the result of the search can be omitted, it's only needed inside the search itself
+        int _ = -Search(++searchDepth, -99999, 99999);
+        // keep note of the best root move
+        if (IsTurnTimeOver()) break;
+        // save the last search result in case the search get's timed out
         bestFullSearchResult = searchResult;
       }
-      Console.WriteLine($"Searched Depth:\t\t{searchDepth}");
-      Console.WriteLine($"Found move:\t\t{searchResult}");
-      Console.WriteLine($"Nodes searched:\t\t{totalNodesChecked}");
-      Console.WriteLine($"Evals run:\t\t{totalEvalsRun}");
-      Console.WriteLine($"Avg Eval Nanoseconds:\t{averageTime}");
-      double searchTimeTaken = watch.ElapsedMilliseconds / 1000.0;
-      Console.WriteLine($"Search time:\t\t{searchTimeTaken}s");
-      Console.WriteLine($"Nodes per Second:\t{totalNodesChecked/searchTimeTaken}nps");
-      Console.WriteLine($"Evals per Second:\t{totalEvalsRun/searchTimeTaken}eps");
-      Console.WriteLine($"Immediate TT-Results:\t{totalNodesChecked-totalEvalsRun}");
-      Console.WriteLine($"Shortcut percent:\t{100-((double)totalEvalsRun/(double)totalNodesChecked*100)}%");
-      Console.WriteLine($"Memory usage:\t\t{memoryUsage}");
       return bestFullSearchResult;
     }
 
-    private int eval(bool isWhite)
+    private int Eval()
     {
-      evalsRun++;
-      var watch = System.Diagnostics.Stopwatch.StartNew();
       string fenString = board.GetFenString().Split(' ')[0];
       int total = 0,
           square = 0,
-          pieceCount = fenString.Count(char.IsLetter)/17,
+          // used to roughly (and pretty badly) check what gamephase we're in, 1 => early game, 0 => late game
+          gamephase = fenString.Count(char.IsLetter)/17,
           pieceNumber,
           result;
-      foreach (char fenChar in board.GetFenString().Split(' ')[0])
+      // iterate over every char in the board description of the FEN-String
+      foreach (char fenChar in fenString)
       {
+        // is it not a letter?
         if(fenChar < 65)
         {
+          // skip the char if it's a slash
           if(fenChar == 47) continue;
-          square += (fenChar-1) & 7;
+          // add the digit to the square counter
+          square += (fenChar) & 7;
         }
         else
         {
-          // result = value of piece + value of the square for specific piece
+          // the piece number is derived from the last 3 binary digits of the ASCII-value
+          // only exceptions are bishops, the logical or does nothing relevant for the other piececs,
+          // but transforms the lowercase b to an uppercase one. The Max() thus pulls both of them up by two
+          /* Resulting mapping:
+           * Piece | ASCII | binary    | last 3 bits
+           * P     | 112   | 0110 0000 | 0
+           * Q     | 113   | 0110 0001 | 1
+           * R     | 114   | 0111 0010 | 2
+           * K     | 107   | 0110 1011 | 3
+           * B     |  98   | 0110 0010 | (2) heightened to 4 by instead taking 100
+           * N     | 110   | 0110 1110 | 6
+           */
           pieceNumber = Math.Max(fenChar | 32, 100) & 7;
-          result = pieceValues[pieceNumber] + decodedTables[pieceCount,pieceNumber,fenChar < 97 ? square ^ 56 : square];
+          // result = value of piece + value of the square for specific piece
+          result = pieceValues[pieceNumber] + decodedTables[gamephase,pieceNumber,fenChar < 97 ? square ^ 56 : square];
           // if it's a black piece, negate the result
           total += fenChar < 97 ? result : -result;
+          square++;
         }
-        square++;
       }
-      watch.Stop();
-      approxRollingAverage(watch.ElapsedTicks * (1000L*1000L*1000L) / System.Diagnostics.Stopwatch.Frequency);
       // since the result favors white, negate it if evaluating for blacks position
-      return isWhite ? total : -total;
+      return board.IsWhiteToMove ? total : -total;
     }
 
-    private int search(int depth, int alpha, int beta)
+    // basically just the Negamax-search from Wikipedia...
+    // https://en.wikipedia.org/wiki/Negamax
+    private int Search(int depth, int alpha, int beta)
     {
-      nodesChecked++;
       int originalAlpha = alpha,
           bestScore = -99999;
       bool isRoot = searchDepth - depth == 0,
@@ -163,11 +151,12 @@ public class MyBot : IChessBot
         if (entryBound == 0 || alpha >= beta) return entryScore;
       }
 
-      Move[] moves = board.GetLegalMoves(depthReached);
       // only check captures after depth has been reached
+      // and only evaluate the position after the depth has been reached
+      Move[] moves = board.GetLegalMoves(depthReached);
       if (depthReached)
       {
-        bestScore = eval(board.IsWhiteToMove);
+        bestScore = Eval();
         alpha = Math.Max(alpha, bestScore);
         if (beta < bestScore) return bestScore;
       }
@@ -178,6 +167,7 @@ public class MyBot : IChessBot
         return board.IsInCheck() ? searchDepth - depth - 99999 : 0;
       }
 
+      // score the moves, prioritize the move found in the transpositionTable, after that do MVV-LVA
       int[] moveScores = new int[moves.Length];
       for (int index = 0; index < moves.Length; index++)
       {
@@ -193,24 +183,18 @@ public class MyBot : IChessBot
       {
         // abort if the time cutoff has been reached
         // return something greater than max value to force future cutoffs
-        if(isTurnTimeOver()) return 999999;
+        if(IsTurnTimeOver()) return 999999;
 
         board.MakeMove(move);
-        int score = -search(depth-1, -beta, -alpha);
+        int score = -Search(depth-1, -beta, -alpha);
         board.UndoMove(move);
         if (bestScore < score)
         {
           bestScore = score;
           bestMove = move;
-          if (isRoot)
-          {
-            searchResult = move;
-          }
+          if (isRoot) searchResult = move;
           alpha = Math.Max(alpha, bestScore);
-          if (alpha >= beta)
-          {
-            break;
-          }
+          if (alpha >= beta) break;
         }
       }
 
@@ -218,14 +202,7 @@ public class MyBot : IChessBot
       return bestScore;
     }
 
-    // utility/debug function
-    private void approxRollingAverage(long newValue)
-    {
-      averageTime -= averageTime / 1000;
-      averageTime += (double) newValue / 1000;
-    }
-
-    private bool isTurnTimeOver()
+    private bool IsTurnTimeOver()
     {
       // The average amount of turns per chess game, plus some leeway seems to be slightly above 40
       // thus the bot get's the time of the increment and around 1/40 of the remaining time on
