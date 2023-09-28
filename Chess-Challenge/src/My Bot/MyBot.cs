@@ -5,23 +5,31 @@ using System.Linq;
 
 public class MyBot : IChessBot
 {
-    // TODO need to compact further, goal would be 75% of the limit c:
     Board board;
     Timer timer;
-    Move searchResult;
+    Move searchResult,
+         bestFullSearchResult;
     int searchDepth;
 
     // https://www.chessprogramming.org/Transposition_Table
     // good chunk less than 2^22, because that seems to go over the memory limit :c
     // this should be just above 210MB, assuming the limit is in Bytes not bits, bits seems way to small
-    static ulong transpositionTableSize = 2500000;
+    static ulong transpositionTableSize = 2_500_000;
     // ulong key, int depth, int score, int bound, Move move
     (ulong, int, int, int, Move)[] transpositionTable = new (ulong, int, int, int, Move)[transpositionTableSize];
 
     // Piece-Square Tables from https://www.chessprogramming.org/Piece-Square_Tables
+    // Indexing:
+    //   gamephase:     0 = endgame, 1 = earlygame; switches as soon as only 16 pieces remain on the board
+    //   piece number:  further explained in the eval function, mapping same as pieceValues
+    //   square:        square index, starting from top left, counting left to right, top to bottom, from whites view
     sbyte[,,] decodedTables = new sbyte[2,7,64];
     // Pawn, Queen, Rook, King, Bishop, Nothing, Knight
     int[] pieceValues = {88, 981, 494, 1200, 331, 0, 309};
+    // These values are taken from here: https://www.talkchess.com/forum3/viewtopic.php?f=2&t=68311&start=19
+    // The difference between the early- and endgame of the pieces is already baked into the tables
+    // The tables are scaled down to a range of -128 to 127, converted to hex and just joined per board rank
+    // meaning every number here represents eight separate values and every set of eight numbers represents a pice in a gamephase
     ulong[] encodedTableLines = {
       // pawn late
       0x0404040404040404,0x7A776D5D655C717F,0x42463C3029273A3C,0x19140D0703070F0F,0x0D0A02FFFFFF0603,0x07090005040103FF,0x0D09090B0D0405FF,0x0404040404040404,
@@ -51,14 +59,14 @@ public class MyBot : IChessBot
 
     public MyBot(){
       // initialize the PST from the compacted data
-      for (int index = 0, offset = 0; index < 96;  index++)
+      for (int index = -1; index < 95;)
       {
-        if (index == 80) offset = 1;
-        byte[] bytes = BitConverter.GetBytes(encodedTableLines[index]);
-        for (int byteIndex = 0; byteIndex < bytes.Length; byteIndex++)
-        {
-          decodedTables[(index / 8) % 2, index / 16 + offset, byteIndex + 8 * (index%8)] = (sbyte)bytes[7-byteIndex];
-        }
+        byte[] bytes = BitConverter.GetBytes(encodedTableLines[++index]);
+        int byteIndex = -1;
+        while (byteIndex < 7)
+          //                                        vvvvvvvvvvv --- this offset is cheaper than inserting null values in
+          //                                                        the encoded tables
+          decodedTables[index / 8 % 2, index / 16 + index / 80, index % 8 * 8 + ++byteIndex] = (sbyte)bytes[7-byteIndex];
       }
     }
 
@@ -67,14 +75,12 @@ public class MyBot : IChessBot
       // transfer important stuff to global scope since it's fewer tokens
       board = _board;
       timer = _timer;
-      searchResult = Move.NullMove;
+      searchResult = bestFullSearchResult = Move.NullMove;
       // as long as there is still time left in the current move, go one iteration deeper
-      Move bestFullSearchResult = searchResult;
       for (searchDepth = 0; searchDepth < 25;)
       {
         // the result of the search can be omitted, it's only needed inside the search itself
-        int _ = -Search(++searchDepth, -99999, 99999);
-        // keep note of the best root move
+        int _ = -Search(++searchDepth, -99_999, 99_999);
         if (IsTurnTimeOver()) break;
         // save the last search result in case the search get's timed out
         bestFullSearchResult = searchResult;
@@ -95,25 +101,24 @@ public class MyBot : IChessBot
       foreach (char fenChar in fenString)
       {
         // is it not a letter?
-        if(fenChar < 65)
+        if(fenChar < 65 && fenChar != 47)
         {
           // skip the char if it's a slash
-          if(fenChar == 47) continue;
-          // add the digit to the square counter
-          square += (fenChar) & 7;
+          // otherwise add the digit to the square counter
+          if(fenChar != 47) square += fenChar & 15;
         }
         else
         {
           // the piece number is derived from the last 3 binary digits of the ASCII-value
-          // only exceptions are bishops, the logical or does nothing relevant for the other piececs,
-          // but transforms the lowercase b to an uppercase one. The Max() thus pulls both of them up by two
+          // the logical or capitalizes every letter, which results in the table seen below
+          // the general capitalization is needed to handle both sides equally and compactly
           /* Resulting mapping:
            * Piece | ASCII | binary    | last 3 bits
            * P     | 112   | 0110 0000 | 0
            * Q     | 113   | 0110 0001 | 1
            * R     | 114   | 0111 0010 | 2
            * K     | 107   | 0110 1011 | 3
-           * B     |  98   | 0110 0010 | (2) heightened to 4 by instead taking 100
+           * B     |  98   | 0110 0010 | (2) heightened to 4 by using  100 instead
            * N     | 110   | 0110 1110 | 6
            */
           pieceNumber = Math.Max(fenChar | 32, 100) & 7;
@@ -128,14 +133,13 @@ public class MyBot : IChessBot
       return board.IsWhiteToMove ? total : -total;
     }
 
-    // basically just the Negamax-search from Wikipedia...
+    // basically just the Negamax-search from Wikipedia... (but also handles the root call)
     // https://en.wikipedia.org/wiki/Negamax
     private int Search(int depth, int alpha, int beta)
     {
       int originalAlpha = alpha,
-          bestScore = -99999;
-      bool isRoot = searchDepth - depth == 0,
-        depthReached = depth <= 0;
+          bestScore = -99_999;
+      bool isRoot = searchDepth - depth == 0;
       ulong zobristKey = board.ZobristKey;
       Move bestMove = Move.NullMove;
 
@@ -146,26 +150,23 @@ public class MyBot : IChessBot
       var (entryKey, entryDepth, entryScore, entryBound, entryMove) = transpositionTable[zobristKey % transpositionTableSize];
       if (!isRoot && entryKey == zobristKey && entryDepth >= depth)
       {
-        if (entryBound == -1) alpha = Math.Max(alpha, entryScore);
-        if (entryBound == 1) beta = Math.Min(beta, entryScore);
         if (entryBound == 0 || alpha >= beta) return entryScore;
+        else if (entryBound == -1) alpha = Math.Max(alpha, entryScore);
+        else beta = Math.Min(beta, entryScore);
       }
 
       // only check captures after depth has been reached
       // and only evaluate the position after the depth has been reached
-      Move[] moves = board.GetLegalMoves(depthReached);
-      if (depthReached)
+      Move[] moves = board.GetLegalMoves(depth <= 0);
+      if (depth <= 0)
       {
         bestScore = Eval();
         alpha = Math.Max(alpha, bestScore);
         if (beta < bestScore) return bestScore;
       }
-      else if (moves.Length == 0)
-      {
-        // accept (latest) defeat instead of refusing all moves
-        // accept stalemate if otherwise would result in losing
-        return board.IsInCheck() ? searchDepth - depth - 99999 : 0;
-      }
+      // accept (latest) defeat instead of refusing all moves
+      // accept stalemate if otherwise would result in losing
+      else if (moves.Length == 0) return board.IsInCheck() ? searchDepth - depth - 99_999 : 0;
 
       // score the moves, prioritize the move found in the transpositionTable, after that do MVV-LVA
       int[] moveScores = new int[moves.Length];
@@ -173,8 +174,8 @@ public class MyBot : IChessBot
       {
         Move move = moves[index];
         moveScores[index] = -(
-          entryMove == move ? 25000 :
-          move.IsCapture ? ((int)move.CapturePieceType * 10) - (int)move.MovePieceType :
+          entryMove == move ? 25_000 :
+          move.IsCapture ? (int)move.CapturePieceType * 10 - (int)move.MovePieceType :
           0);
       }
       Array.Sort(moveScores, moves);
@@ -183,7 +184,7 @@ public class MyBot : IChessBot
       {
         // abort if the time cutoff has been reached
         // return something greater than max value to force future cutoffs
-        if(IsTurnTimeOver()) return 999999;
+        if(IsTurnTimeOver()) return 999_999;
 
         board.MakeMove(move);
         int score = -Search(depth-1, -beta, -alpha);
@@ -208,6 +209,8 @@ public class MyBot : IChessBot
       // thus the bot get's the time of the increment and around 1/40 of the remaining time on
       // it's clock for the current turn
       // (source: https://chess.stackexchange.com/a/2507)
+      // after the minor amount of testing against chess.com bots, my games tend to be WAY longer...
+      // but it did still work and in general performed better than expected so I'm keeping it :)
       return timer.MillisecondsElapsedThisTurn - timer.IncrementMilliseconds > timer.MillisecondsRemaining / 40;
     }
 }
