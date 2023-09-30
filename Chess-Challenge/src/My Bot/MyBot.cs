@@ -1,7 +1,16 @@
 ﻿using ChessChallenge.API;
 using System;
-using System.Collections.Generic;
 using System.Linq;
+
+/*
+ * FENcer by Shlynz
+ * A very simple chess bot, using the NegaMax search and a handbuild evaluation function, which doesn't care about
+ * anything else but material advantage and positioning via piece-square  tables. Sits very comfortably at 75% token
+ * capacity and is time-control-aware. Really likes it's knights in the early game and tends to to some real nonesense
+ * moves, but was able to beat a 1500 elo Chess.com bot.
+ *
+ * If the formatting is busted, here is a mirror on GitHub: https://github.com/shlynz/Chess-Challenge
+ */
 
 public class MyBot : IChessBot
 {
@@ -101,7 +110,7 @@ public class MyBot : IChessBot
       foreach (char fenChar in fenString)
       {
         // is it not a letter?
-        if(fenChar < 65 && fenChar != 47)
+        if(fenChar < 65)
         {
           // skip the char if it's a slash
           // otherwise add the digit to the square counter
@@ -206,7 +215,7 @@ public class MyBot : IChessBot
     private bool IsTurnTimeOver()
     {
       // The average amount of turns per chess game, plus some leeway seems to be slightly above 40
-      // thus the bot get's the time of the increment and around 1/40 of the remaining time on
+      // thus the bot gets the time of the increment and around 1/40 of the remaining time on
       // it's clock for the current turn
       // (source: https://chess.stackexchange.com/a/2507)
       // after the minor amount of testing against chess.com bots, my games tend to be WAY longer...
