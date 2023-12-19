@@ -5,10 +5,8 @@ Once submissions close, these bots will battle it out to discover which bot is b
 I will then create a video exploring the implementations of the best and most unique/interesting bots.
 I also plan to make a small game that features these most interesting/challenging entries, so that everyone can try playing against them.
 
-## Submission Due Date
-October 1st 2023.<br>
-Entries can be submitted over [here](https://forms.gle/6jjj8jxNQ5Ln53ie6).<br>
-You are free to edit your entry at any point up to the due date.
+## Submission Result
+FENcer was able to reach place 147 with a score of 33.5/64.
 
 ## Change Log
 It has been necessary to make some bug fixes to the original project, and I've also been tempted (by some great suggestions from the community) into making a few non-breaking improvements/additions to the API. I realize that changes can be frustrating during a challenge though, and so will commit to freezing the API from August 1st.
